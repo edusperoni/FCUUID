@@ -49,7 +49,7 @@ NSString *const _uuidsOfUserDevicesToggleKey = @"fc_uuidsOfUserDevicesToggle";
 }
 
 
--(NSString *)_getOrCreateValueForKey:(NSString *)key defaultValue:(NSString *)defaultValue userDefaults:(BOOL)userDefaults keychain:(BOOL)keychain service:(NSString *)service accessGroup:(NSString *)accessGroup synchronizable:(BOOL)synchronizable
+-(NSString *)_getOrCreateValueForKey:(NSString *)key defaultValue:(NSString *)defaultValue userDefaults:(BOOL)userDefaults keychain:(BOOL)keychain service:(NSString *)service accessGroup:(NSString *)accessGroup synchronizable:(BOOL)synchronizable thisDeviceOnly:(BOOL)thisDeviceOnly
 {
     NSString *value = [self _getValueForKey:key userDefaults:userDefaults keychain:keychain service:service accessGroup:accessGroup];
 
@@ -61,9 +61,14 @@ NSString *const _uuidsOfUserDevicesToggleKey = @"fc_uuidsOfUserDevicesToggle";
         value = [self uuid];
     }
 
-    [self _setValue:value forKey:key userDefaults:userDefaults keychain:keychain service:service accessGroup:accessGroup synchronizable:synchronizable];
+    [self _setValue:value forKey:key userDefaults:userDefaults keychain:keychain service:service accessGroup:accessGroup synchronizable:synchronizable thisDeviceOnly:thisDeviceOnly];
 
     return value;
+}
+
+-(NSString *)_getOrCreateValueForKey:(NSString *)key defaultValue:(NSString *)defaultValue userDefaults:(BOOL)userDefaults keychain:(BOOL)keychain service:(NSString *)service accessGroup:(NSString *)accessGroup synchronizable:(BOOL)synchronizable
+{
+    return [self _getOrCreateValueForKey:key defaultValue:defaultValue userDefaults:userDefaults keychain:keychain service:service accessGroup:accessGroup synchronizable:synchronizable thisDeviceOnly:NO];
 }
 
 
@@ -83,7 +88,7 @@ NSString *const _uuidsOfUserDevicesToggleKey = @"fc_uuidsOfUserDevicesToggle";
 }
 
 
--(void)_setValue:(NSString *)value forKey:(NSString *)key userDefaults:(BOOL)userDefaults keychain:(BOOL)keychain service:(NSString *)service accessGroup:(NSString *)accessGroup synchronizable:(BOOL)synchronizable
+-(void)_setValue:(NSString *)value forKey:(NSString *)key userDefaults:(BOOL)userDefaults keychain:(BOOL)keychain service:(NSString *)service accessGroup:(NSString *)accessGroup synchronizable:(BOOL)synchronizable thisDeviceOnly:(BOOL)thisDeviceOnly
 {
     if( value && userDefaults ){
         [[NSUserDefaults standardUserDefaults] setObject:value forKey:key];
@@ -93,8 +98,16 @@ NSString *const _uuidsOfUserDevicesToggleKey = @"fc_uuidsOfUserDevicesToggle";
     if( value && keychain ){
         UICKeyChainStore *keychain = [UICKeyChainStore keyChainStoreWithService:service accessGroup:accessGroup];
         [keychain setSynchronizable:synchronizable];
+        if(thisDeviceOnly) {
+            [keychain setAccessibility:UICKeyChainStoreAccessibilityAfterFirstUnlockThisDeviceOnly];
+        }
         [keychain setString:value forKey:key];
     }
+}
+
+-(void)_setValue:(NSString *)value forKey:(NSString *)key userDefaults:(BOOL)userDefaults keychain:(BOOL)keychain service:(NSString *)service accessGroup:(NSString *)accessGroup synchronizable:(BOOL)synchronizable
+{
+    [self _setValue:value forKey:key userDefaults:userDefaults keychain:keychain service:service accessGroup:accessGroup synchronizable:synchronizable thisDeviceOnly:NO];
 }
 
 
@@ -164,7 +177,7 @@ NSString *const _uuidsOfUserDevicesToggleKey = @"fc_uuidsOfUserDevicesToggle";
 -(void)uuidForDevice_updateWithValue:(NSString *)value
 {
     _uuidForDevice = [NSString stringWithString:value];
-    [self _setValue:_uuidForDevice forKey:_uuidForDeviceKey userDefaults:YES keychain:YES service:nil accessGroup:nil synchronizable:NO];
+    [self _setValue:_uuidForDevice forKey:_uuidForDeviceKey userDefaults:YES keychain:YES service:nil accessGroup:nil synchronizable:NO thisDeviceOnly:_thisDeviceOnly];
 }
 
 
@@ -173,7 +186,7 @@ NSString *const _uuidsOfUserDevicesToggleKey = @"fc_uuidsOfUserDevicesToggle";
     //also known as udid/uniqueDeviceIdentifier but this doesn't persists to system reset
 
     if( _uuidForDevice == nil ){
-        _uuidForDevice = [self _getOrCreateValueForKey:_uuidForDeviceKey defaultValue:nil userDefaults:YES keychain:YES service:nil accessGroup:nil synchronizable:NO];
+        _uuidForDevice = [self _getOrCreateValueForKey:_uuidForDeviceKey defaultValue:nil userDefaults:YES keychain:YES service:nil accessGroup:nil synchronizable:NO thisDeviceOnly:_thisDeviceOnly];
     }
 
     return _uuidForDevice;
@@ -237,6 +250,12 @@ NSString *const _uuidsOfUserDevicesToggleKey = @"fc_uuidsOfUserDevicesToggle";
 }
 
 
+-(void)setThisDeviceOnly:(BOOL)thisDeviceOnly
+{
+    _thisDeviceOnly = thisDeviceOnly;
+}
+
+
 -(void)setSharedKeychainAccessGroup:(NSString *)accessGroup
 {
     _sharedAccessGroup = accessGroup;
@@ -263,7 +282,7 @@ NSString *const _uuidsOfUserDevicesToggleKey = @"fc_uuidsOfUserDevicesToggle";
     }
 
     if(_uuidForDeviceShared == nil) {
-        _uuidForDeviceShared = [self _getOrCreateValueForKey:_uuidForDeviceSharedKey defaultValue:nil userDefaults:NO keychain:YES service:_uuidForDeviceSharedService accessGroup:_sharedAccessGroup synchronizable:NO];
+        _uuidForDeviceShared = [self _getOrCreateValueForKey:_uuidForDeviceSharedKey defaultValue:nil userDefaults:NO keychain:YES service:_uuidForDeviceSharedService accessGroup:_sharedAccessGroup synchronizable:NO thisDeviceOnly:_thisDeviceOnly];
     }
 
     return _uuidForDeviceShared;
@@ -290,7 +309,7 @@ NSString *const _uuidsOfUserDevicesToggleKey = @"fc_uuidsOfUserDevicesToggle";
     }
 
     _uuidForDeviceShared = [NSString stringWithString:value];
-    [self _setValue:_uuidForDeviceShared forKey:_uuidForDeviceSharedKey userDefaults:NO keychain:YES service:_uuidForDeviceSharedService accessGroup:_sharedAccessGroup synchronizable:NO];
+    [self _setValue:_uuidForDeviceShared forKey:_uuidForDeviceSharedKey userDefaults:NO keychain:YES service:_uuidForDeviceSharedService accessGroup:_sharedAccessGroup synchronizable:NO thisDeviceOnly:_thisDeviceOnly];
 
     return _uuidForDeviceShared;
 }
@@ -524,6 +543,12 @@ NSString *const _uuidsOfUserDevicesToggleKey = @"fc_uuidsOfUserDevicesToggle";
 +(BOOL)uuidValueIsValid:(NSString *)uuidValue
 {
     return [[self sharedInstance] uuidValueIsValid:uuidValue];
+}
+
+
++(void)setThisDeviceOnly:(BOOL)thisDeviceOnly
+{
+    [[self sharedInstance] setThisDeviceOnly:thisDeviceOnly];
 }
 
 

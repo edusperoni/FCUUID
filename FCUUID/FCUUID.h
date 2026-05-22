@@ -21,6 +21,7 @@ extern NSString *const FCUUIDsOfUserDevicesDidChangeNotification;
     BOOL _uuidsOfUserDevices_iCloudAvailable;
     NSString *_sharedAccessGroup;
     NSString *_uuidForDeviceShared;
+    BOOL _thisDeviceOnly;
 }
 
 +(NSString *)uuid;
@@ -41,6 +42,12 @@ extern NSString *const FCUUIDsOfUserDevicesDidChangeNotification;
 // Shared device UUID across multiple apps using a shared keychain access group.
 // Both apps must have the same Keychain Sharing entitlement with a matching access group.
 // Call setSharedKeychainAccessGroup: before using any shared UUID methods.
+
+// When YES, device UUIDs (uuidForDevice and uuidForDeviceShared) are stored with
+// kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly, preventing them from being
+// copied to other devices via backup or migration. Defaults to NO.
+// Call before first UUID access.
++(void)setThisDeviceOnly:(BOOL)thisDeviceOnly;
 
 // Configures the shared keychain access group used for cross-app UUID sharing.
 +(void)setSharedKeychainAccessGroup:(NSString *)accessGroup;
