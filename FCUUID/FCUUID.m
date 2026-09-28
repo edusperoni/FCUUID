@@ -88,6 +88,37 @@ NSString *const _uuidsOfUserDevicesToggleKey = @"fc_uuidsOfUserDevicesToggle";
 }
 
 
+-(NSString *)_getKeychainValueForKey:(NSString *)key service:(NSString *)service accessGroup:(NSString *)accessGroup available:(BOOL *)available
+{
+    //a missing item is reported as nil without an error; any error (e.g. errSecInteractionNotAllowed before first unlock) means the keychain could not be read
+    NSError *error = nil;
+    NSString *value = [UICKeyChainStore stringForKey:key service:service accessGroup:accessGroup error:&error];
+
+    *available = (error == nil);
+
+    return value;
+}
+
+
+-(NSString *)_getOrCreateThisDeviceOnlyValueForKey:(NSString *)key userDefaults:(BOOL)userDefaults service:(NSString *)service accessGroup:(NSString *)accessGroup available:(BOOL *)available
+{
+    NSString *value = [self _getKeychainValueForKey:key service:service accessGroup:accessGroup available:available];
+
+    if(!*available){
+        //NSUserDefaults travels with backups and device transfers, so it is trusted only while the keychain cannot be read, never when the keychain item is absent
+        return userDefaults ? [[NSUserDefaults standardUserDefaults] stringForKey:key] : nil;
+    }
+
+    if(!value){
+        value = [self uuid];
+    }
+
+    [self _setValue:value forKey:key userDefaults:userDefaults keychain:YES service:service accessGroup:accessGroup synchronizable:NO thisDeviceOnly:YES];
+
+    return value;
+}
+
+
 -(void)_setValue:(NSString *)value forKey:(NSString *)key userDefaults:(BOOL)userDefaults keychain:(BOOL)keychain service:(NSString *)service accessGroup:(NSString *)accessGroup synchronizable:(BOOL)synchronizable thisDeviceOnly:(BOOL)thisDeviceOnly
 {
     if( value && userDefaults ){
@@ -186,7 +217,20 @@ NSString *const _uuidsOfUserDevicesToggleKey = @"fc_uuidsOfUserDevicesToggle";
     //also known as udid/uniqueDeviceIdentifier but this doesn't persists to system reset
 
     if( _uuidForDevice == nil ){
-        _uuidForDevice = [self _getOrCreateValueForKey:_uuidForDeviceKey defaultValue:nil userDefaults:YES keychain:YES service:nil accessGroup:nil synchronizable:NO thisDeviceOnly:_thisDeviceOnly];
+        if(_thisDeviceOnly){
+            BOOL available = YES;
+            NSString *value = [self _getOrCreateThisDeviceOnlyValueForKey:_uuidForDeviceKey userDefaults:YES service:nil accessGroup:nil available:&available];
+
+            //left uncached so the next call reads the keychain again
+            if(!available){
+                return value;
+            }
+
+            _uuidForDevice = value;
+        }
+        else {
+            _uuidForDevice = [self _getOrCreateValueForKey:_uuidForDeviceKey defaultValue:nil userDefaults:YES keychain:YES service:nil accessGroup:nil synchronizable:NO thisDeviceOnly:_thisDeviceOnly];
+        }
     }
 
     return _uuidForDevice;
@@ -201,6 +245,12 @@ NSString *const _uuidsOfUserDevicesToggleKey = @"fc_uuidsOfUserDevicesToggle";
         NSString *newValue = [NSString stringWithString:value];
 
         if([oldValue isEqualToString:newValue])
+        {
+            return oldValue;
+        }
+
+        //uuidForDevice leaves the ivar unset only while the keychain cannot be read, and a migration written then would not survive
+        if(commitMigration && _uuidForDevice == nil)
         {
             return oldValue;
         }
@@ -282,7 +332,13 @@ NSString *const _uuidsOfUserDevicesToggleKey = @"fc_uuidsOfUserDevicesToggle";
     }
 
     if(_uuidForDeviceShared == nil) {
-        _uuidForDeviceShared = [self _getOrCreateValueForKey:_uuidForDeviceSharedKey defaultValue:nil userDefaults:NO keychain:YES service:_uuidForDeviceSharedService accessGroup:_sharedAccessGroup synchronizable:NO thisDeviceOnly:_thisDeviceOnly];
+        if(_thisDeviceOnly) {
+            BOOL available = YES;
+            _uuidForDeviceShared = [self _getOrCreateThisDeviceOnlyValueForKey:_uuidForDeviceSharedKey userDefaults:NO service:_uuidForDeviceSharedService accessGroup:_sharedAccessGroup available:&available];
+        }
+        else {
+            _uuidForDeviceShared = [self _getOrCreateValueForKey:_uuidForDeviceSharedKey defaultValue:nil userDefaults:NO keychain:YES service:_uuidForDeviceSharedService accessGroup:_sharedAccessGroup synchronizable:NO thisDeviceOnly:_thisDeviceOnly];
+        }
     }
 
     return _uuidForDeviceShared;
@@ -301,7 +357,20 @@ NSString *const _uuidsOfUserDevicesToggleKey = @"fc_uuidsOfUserDevicesToggle";
         return nil;
     }
 
-    NSString *existing = [self existingSharedDeviceUUID];
+    NSString *existing = nil;
+
+    if(_thisDeviceOnly) {
+        BOOL available = YES;
+        existing = [self _getKeychainValueForKey:_uuidForDeviceSharedKey service:_uuidForDeviceSharedService accessGroup:_sharedAccessGroup available:&available];
+
+        //an unreadable keychain may already hold a shared uuid that the migrated value must not overwrite
+        if(!available) {
+            return [NSString stringWithString:value];
+        }
+    }
+    else {
+        existing = [self existingSharedDeviceUUID];
+    }
 
     if(existing) {
         _uuidForDeviceShared = existing;

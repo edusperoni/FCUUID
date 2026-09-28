@@ -46,6 +46,10 @@ extern NSString *const FCUUIDsOfUserDevicesDidChangeNotification;
 // When YES, device UUIDs (uuidForDevice and uuidForDeviceShared) are stored with
 // kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly, preventing them from being
 // copied to other devices via backup or migration. Defaults to NO.
+// In this mode the NSUserDefaults copy of uuidForDevice is read only while the keychain
+// cannot be read (e.g. background launch before the first unlock after a reboot), never
+// when the keychain item is absent. Device UUID getters can return nil while the keychain
+// cannot be read and no local copy exists; nothing is cached or written in that state.
 // Call before first UUID access.
 +(void)setThisDeviceOnly:(BOOL)thisDeviceOnly;
 
